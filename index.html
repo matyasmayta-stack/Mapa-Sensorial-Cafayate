@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mapa Sensorial — Cafayate</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; }
+    .app { display: flex; flex-direction: column; height: 100vh; }
+
+    .topbar {
+      background: #ffffff; border-bottom: 1px solid #e5e7eb;
+      padding: 10px 14px;
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      flex-wrap: wrap; z-index: 10;
+    }
+    .topbar h1 { font-size: 15px; font-weight: 600; color: #111827; }
+    .topbar-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    #count-label { font-size: 11px; color: #6b7280; }
+
+    .btn-action {
+      display: flex; align-items: center; gap: 5px;
+      padding: 5px 12px; border-radius: 99px;
+      border: 1px solid #e5e7eb; background: #f9fafb;
+      color: #374151; font-size: 11px; cursor: pointer;
+      font-family: inherit; transition: all .15s;
+    }
+    .btn-action:hover { background: #ffffff; border-color: #d1d5db; }
+    .btn-action svg { width: 13px; height: 13px; flex-shrink: 0; }
+
+    .btn-layer {
+      display: flex; align-items: center; gap: 5px;
+      padding: 5px 12px; border-radius: 99px;
+      border: 1px solid #e5e7eb; background: #f9fafb;
+      color: #374151; font-size: 11px; cursor: pointer;
+      font-family: inherit; transition: all .15s; font-weight: 500;
+    }
+    .btn-layer:hover { background: #ffffff; }
+    .btn-layer.sat { background: #0f172a; color: #e2e8f0; border-color: #334155; }
+    .btn-layer.sat:hover { background: #1e293b; }
+
+    .sensor-tabs { display: flex; gap: 5px; flex-wrap: wrap; }
+    .stab {
+      padding: 4px 10px; border-radius: 99px;
+      border: 1px solid #e5e7eb; background: #f9fafb;
+      cursor: pointer; font-size: 11px; color: #6b7280; transition: all .15s;
+    }
+    .stab.active.todos    { background:#ffffff; color:#111827; border-color:#9ca3af; }
+    .stab.active.aroma    { background:#FAEEDA; color:#633806; border-color:#EF9F27; }
+    .stab.active.sonido   { background:#EEEDFE; color:#3C3489; border-color:#7F77DD; }
+    .stab.active.textura  { background:#E1F5EE; color:#085041; border-color:#1D9E75; }
+    .stab.active.forma    { background:#FAECE7; color:#4A1B0C; border-color:#D85A30; }
+    .stab.active.visual   { background:#E6F1FB; color:#0C447C; border-color:#378ADD; }
+
+    .main { display: flex; flex: 1; overflow: hidden; position: relative; }
+    #map { flex: 1; }
+
+    .panel {
+      width: 290px; min-width: 250px;
+      background: #ffffff; border-left: 1px solid #e5e7eb;
+      display: flex; flex-direction: column; overflow-y: auto; z-index: 5;
+    }
+    .panel-section { padding: 12px 14px; border-bottom: 1px solid #e5e7eb; }
+    .panel-section h2 { font-size: 11px; font-weight: 600; color: #6b7280; margin-bottom: 8px; text-transform: uppercase; letter-spacing: .05em; }
+
+    .add-form input[type=text], .add-form textarea {
+      width: 100%; font-size: 12px; margin-bottom: 7px;
+      padding: 6px 9px; border-radius: 8px; border: 1px solid #e5e7eb;
+      background: #f9fafb; color: #111827; font-family: inherit;
+    }
+    .add-form textarea { resize: vertical; min-height: 48px; }
+    .add-form input[type=file] {
+      width: 100%; font-size: 11px; margin-bottom: 7px;
+      padding: 4px 9px; border-radius: 8px; border: 1px solid #e5e7eb;
+      background: #f9fafb; color: #111827; font-family: inherit;
+    }
+    .add-form button {
+      width: 100%; padding: 7px; border-radius: 8px;
+      border: 1px solid #e5e7eb; background: #f9fafb;
+      color: #111827; font-size: 12px; cursor: pointer; font-family: inherit;
+    }
+    .add-form button:hover { background: #ffffff; }
+    .add-form button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .range-row { display: flex; align-items: center; gap: 7px; margin-bottom: 7px; }
+    .range-row label { font-size: 11px; color: #6b7280; min-width: 58px; }
+    .range-row input[type=range] { flex: 1; }
+    .range-row span { font-size: 11px; font-weight: 600; min-width: 14px; text-align: right; }
+
+    .type-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 7px; }
+    .type-chip {
+      padding: 6px 8px; border-radius: 8px; border: 1px solid #e5e7eb;
+      background: #f9fafb; cursor: pointer; font-size: 11px; color: #6b7280;
+      text-align: center; transition: all .15s; user-select: none;
+    }
+    .type-chip.sel.aroma   { background:#FAEEDA; color:#633806; border-color:#EF9F27; }
+    .type-chip.sel.sonido  { background:#EEEDFE; color:#3C3489; border-color:#7F77DD; }
+    .type-chip.sel.textura { background:#E1F5EE; color:#085041; border-color:#1D9E75; }
+    .type-chip.sel.forma   { background:#FAECE7; color:#4A1B0C; border-color:#D85A30; }
+    .type-chip.sel.visual  { background:#E6F1FB; color:#0C447C; border-color:#378ADD; }
+
+    .field-audio-wrap { display:none; margin-bottom:7px; }
+    .audio-box { background:#EEEDFE; border:1px solid #7F77DD; border-radius:8px; padding:8px 10px; }
+    .audio-box p { font-size:11px; color:#3C3489; margin-bottom:5px; font-weight:600; }
+
+    .point-detail { padding: 14px; }
+    .point-detail h3 { font-size: 14px; font-weight: 600; color: #111827; margin-bottom: 3px; }
+    .point-detail .sub { font-size: 11px; color: #6b7280; margin-bottom: 10px; }
+    .badge-row { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
+    .badge { font-size: 10px; padding: 2px 7px; border-radius: 99px; }
+    .badge.aroma   { background:#FAEEDA; color:#633806; }
+    .badge.sonido  { background:#EEEDFE; color:#3C3489; }
+    .badge.textura { background:#E1F5EE; color:#085041; }
+    .badge.forma   { background:#FAECE7; color:#4A1B0C; }
+    .badge.visual  { background:#E6F1FB; color:#0C447C; }
+    .desc-text { font-size:12px; color:#111827; line-height:1.6; margin-bottom:10px; }
+    .bar-track { height:5px; background:#f3f4f6; border-radius:99px; overflow:hidden; margin-top:4px; }
+    .bar-fill { height:100%; border-radius:99px; }
+    .bar-label { font-size:10px; color:#6b7280; }
+    .date-label { font-size:10px; color:#6b7280; margin-top:8px; }
+    .foto-preview { width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:8px; border:1px solid #e5e7eb; margin-bottom:10px; display:block; }
+    .audio-player { width:100%; margin-bottom:10px; background:#EEEDFE; border-radius:8px; padding:8px 10px; border:1px solid #7F77DD; }
+    .audio-player p { font-size:10px; color:#3C3489; margin-bottom:4px; font-weight:600; }
+    .audio-player audio { width:100%; height:32px; display:block; }
+    .empty-state { padding:20px 14px; text-align:center; color:#6b7280; font-size:12px; line-height:1.6; }
+    .field-label { font-size:11px; color:#6b7280; display:block; margin-bottom:4px; }
+
+    .toast {
+      position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+      border-radius:99px; padding:8px 18px; font-size:12px;
+      pointer-events:none; z-index:9999; white-space:nowrap;
+      opacity:0; transition:opacity .3s;
+    }
+    .toast.success { background:#E1F5EE; border:1px solid #1D9E75; color:#085041; }
+    .toast.error   { background:#FCEBEB; border:1px solid #E24B4A; color:#501313; }
+    .toast.show { opacity:1; }
+
+    .spinner { display:inline-block; width:12px; height:12px; border:2px solid #e5e7eb; border-top-color:#6b7280; border-radius:50%; animation:spin .7s linear infinite; margin-right:5px; vertical-align:middle; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+
+    @media (max-width:640px) {
+      .main { flex-direction:column; }
+      .panel { width:100%; border-left:none; border-top:1px solid #e5e7eb; max-height:320px; }
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div>
+      <h1>🗺 Mapa Sensorial — Cafayate</h1>
+      <span id="count-label">Cargando...</span>
+    </div>
+    <div class="topbar-right">
+      <div class="sensor-tabs" id="tabs">
+        <div class="stab active todos" data-type="todos">Todos</div>
+        <div class="stab" data-type="aroma">Aromas</div>
+        <div class="stab" data-type="sonido">Sonidos</div>
+        <div class="stab" data-type="textura">Texturas</div>
+        <div class="stab" data-type="forma">Formas</div>
+        <div class="stab" data-type="visual">Visuales</div>
+      </div>
+      <button class="btn-layer" id="btn-layer" onclick="toggleLayer()">🛰 Satélite</button>
+      <button class="btn-action" onclick="exportCSV()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Exportar CSV
+      </button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div id="map"></div>
+    <div class="panel">
+      <div class="panel-section">
+        <h2>Nuevo registro</h2>
+        <div class="add-form">
+          <input type="text" id="new-name" placeholder="Nombre del lugar" />
+          <label class="field-label">Tipo sensorial</label>
+          <div class="type-grid" id="type-grid">
+            <div class="type-chip" data-type="aroma">🌸 Aroma</div>
+            <div class="type-chip" data-type="sonido">🔊 Sonido</div>
+            <div class="type-chip" data-type="textura">🖐 Textura</div>
+            <div class="type-chip" data-type="forma">🔷 Forma</div>
+            <div class="type-chip" data-type="visual" style="grid-column:1/-1;">👁 Visual</div>
+          </div>
+          <input type="text" id="new-tag" placeholder="Etiquetas (ej: vino, viento, rugoso)" />
+          <textarea id="new-desc" placeholder="Descripción sensorial..."></textarea>
+          <div class="range-row">
+            <label>Intensidad</label>
+            <input type="range" min="1" max="5" value="3" id="new-int" step="1"
+              oninput="document.getElementById('int-out').textContent=this.value" />
+            <span id="int-out">3</span>
+          </div>
+          <div class="field-audio-wrap" id="field-audio-wrap">
+            <div class="audio-box">
+              <p>🎵 Archivo de audio (mp3, wav, m4a, ogg)</p>
+              <input type="file" id="new-audio" accept="audio/*" />
+            </div>
+          </div>
+          <label class="field-label">Foto (opcional)</label>
+          <input type="file" id="new-foto" accept="image/*" />
+          <p style="font-size:10px;color:#6b7280;margin-bottom:7px;" id="loc-hint">📍 Hacé clic en el mapa para elegir la ubicación</p>
+          <button id="btn-add" onclick="addPoint()">+ Agregar al mapa</button>
+        </div>
+      </div>
+      <div id="detail-area" class="empty-state">Tocá un marcador en el mapa para ver su detalle</div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const SUPABASE_URL = 'https://brnzlbjctwgyjpgxpgjk.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJybnpsYmpjdHdneWpwZ3hwZ2prIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwNDk3MzQsImV4cCI6MjA5MTYyNTczNH0.jF3DsZw4e_2JdQ3hZhKp_xnhCggga8d6EoUpBzUWsrM';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const CAFAYATE = [-26.0731, -65.9761];
+const TIPOS = {
+  aroma:   { hex:'#EF9F27', dark:'#BA7517', label:'Aroma',   ejemplo:'vino, tierra, flores' },
+  sonido:  { hex:'#7F77DD', dark:'#534AB7', label:'Sonido',  ejemplo:'viento, campanas, pájaros' },
+  textura: { hex:'#1D9E75', dark:'#0F6E56', label:'Textura', ejemplo:'rugoso, suave, arenoso' },
+  forma:   { hex:'#D85A30', dark:'#993C1D', label:'Forma',   ejemplo:'angular, curvo, irregular' },
+  visual:  { hex:'#378ADD', dark:'#185FA5', label:'Visual',  ejemplo:'rojo, ocre, brillante' },
+};
+
+let points=[], activeFilter='todos', selectedType=null;
+let pendingLatLng=null, markers={}, selectedId=null;
+let isSatellite = false;
+
+const map = L.map('map').setView(CAFAYATE, 15);
+
+const layerStreet = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution:'© <a href="https://www.openstreetmap.org/">OpenStreetMap</a>', maxZoom:19,
+});
+const layerSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+  attribution:'© Esri, Maxar, Earthstar Geographics', maxZoom:19,
+});
+const layerSatelliteLabels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+  attribution:'', maxZoom:19, opacity:0.8,
+});
+
+layerStreet.addTo(map);
+
+function toggleLayer() {
+  const btn = document.getElementById('btn-layer');
+  if (!isSatellite) {
+    map.removeLayer(layerStreet);
+    layerSatellite.addTo(map);
+    layerSatelliteLabels.addTo(map);
+    btn.textContent = '🗺 Mapa';
+    btn.classList.add('sat');
+    isSatellite = true;
+  } else {
+    map.removeLayer(layerSatellite);
+    map.removeLayer(layerSatelliteLabels);
+    layerStreet.addTo(map);
+    btn.textContent = '🛰 Satélite';
+    btn.classList.remove('sat');
+    isSatellite = false;
+  }
+}
+
+function makeIcon(tipo, sel) {
+  const c = TIPOS[tipo]||TIPOS.visual;
+  const size = sel?28:22;
+  const ring = sel?`<circle cx="14" cy="14" r="13" fill="none" stroke="white" stroke-width="2.5"/>`:'';
+  return L.divIcon({
+    html:`<svg xmlns="http://www.w3.org/2000/svg" width="${size*2}" height="${size*2}" viewBox="0 0 28 28">
+      <circle cx="14" cy="14" r="11" fill="${c.hex}" stroke="${c.dark}" stroke-width="1.5"/>
+      ${ring}<circle cx="14" cy="14" r="4" fill="white" opacity="0.85"/>
+    </svg>`,
+    className:'', iconSize:[size*2,size*2], iconAnchor:[size,size],
+  });
+}
+
+function renderMarkers() {
+  Object.values(markers).forEach(m=>map.removeLayer(m)); markers={};
+  const filtered = activeFilter==='todos'?points:points.filter(p=>p.tipo===activeFilter);
+  filtered.forEach(p=>{
+    const m=L.marker([p.latitud,p.longitud],{icon:makeIcon(p.tipo,p.id===selectedId)}).addTo(map);
+    m.on('click',()=>selectPoint(p.id));
+    markers[p.id]=m;
+  });
+  const n=filtered.length;
+  document.getElementById('count-label').textContent=n+' registro'+(n!==1?'s':'');
+}
+
+function selectPoint(id) {
+  selectedId=id;
+  const p=points.find(x=>x.id===id); if(!p)return;
+  renderMarkers(); renderDetail(p); map.panTo([p.latitud,p.longitud]);
+}
+
+function renderDetail(p) {
+  const area=document.getElementById('detail-area');
+  if(!p){area.innerHTML='<div class="empty-state">Tocá un marcador en el mapa para ver su detalle</div>';return;}
+  const c=TIPOS[p.tipo]||TIPOS.visual;
+  const tags=(p.etiquetas||'').split(',').map(t=>t.trim()).filter(Boolean);
+  const pct=((p.intensidad||1)/5)*100;
+  const fecha=p.creado_en?new Date(p.creado_en).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+  const fotoHtml=p.foto_url?`<img class="foto-preview" src="${p.foto_url}" alt="foto"/>`:'';
+  const audioHtml=(p.tipo==='sonido'&&p.audio_url)?`<div class="audio-player"><p>🎵 Escuchar sonido</p><audio controls src="${p.audio_url}"></audio></div>`:'';
+  area.innerHTML=`<div class="point-detail">
+    ${fotoHtml}${audioHtml}
+    <h3>${p.nombre}</h3>
+    <div class="sub">${c.label} · ${Number(p.latitud).toFixed(4)}, ${Number(p.longitud).toFixed(4)}</div>
+    <div class="badge-row">${tags.map(t=>`<span class="badge ${p.tipo}">${t}</span>`).join('')}</div>
+    <p class="desc-text">${p.descripcion||''}</p>
+    <div class="bar-label">Intensidad ${p.intensidad}/5</div>
+    <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${c.hex}"></div></div>
+    ${fecha?`<div class="date-label">Registrado el ${fecha}</div>`:''}
+    <button onclick="removePoint('${p.id}')" style="margin-top:12px;width:100%;padding:6px;border-radius:8px;border:1px solid #e5e7eb;background:#f9fafb;color:#6b7280;font-size:11px;cursor:pointer;font-family:inherit;">Eliminar punto</button>
+  </div>`;
+}
+
+async function removePoint(id) {
+  const {error}=await sb.from('registros').delete().eq('id',id);
+  if(error){showToast('Error: '+error.message,'error');return;}
+  if(markers[id])map.removeLayer(markers[id]); delete markers[id];
+  points=points.filter(p=>p.id!==id); selectedId=null;
+  renderDetail(null); renderMarkers(); showToast('Punto eliminado','success');
+}
+
+let pendingMarker=null;
+map.on('click',e=>{
+  pendingLatLng=e.latlng;
+  if(pendingMarker)map.removeLayer(pendingMarker);
+  pendingMarker=L.circleMarker([e.latlng.lat,e.latlng.lng],{radius:10,color:'#fff',weight:2,fill:true,fillColor:'#534AB7',fillOpacity:0.4,dashArray:'5 3'}).addTo(map);
+  document.getElementById('loc-hint').textContent=`📍 Ubicación: ${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)}`;
+});
+
+document.getElementById('type-grid').addEventListener('click',e=>{
+  const chip=e.target.closest('.type-chip'); if(!chip)return;
+  selectedType=chip.dataset.type;
+  document.querySelectorAll('.type-chip').forEach(c=>c.classList.remove('sel','aroma','sonido','textura','forma','visual'));
+  chip.classList.add('sel',selectedType);
+  document.getElementById('new-tag').placeholder=`Etiquetas (ej: ${TIPOS[selectedType].ejemplo})`;
+  document.getElementById('field-audio-wrap').style.display=selectedType==='sonido'?'block':'none';
+});
+
+async function uploadFile(file,bucket) {
+  const ext=file.name.split('.').pop();
+  const path=`${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+  const {error}=await sb.storage.from(bucket).upload(path,file,{upsert:true});
+  if(error)throw error;
+  return sb.storage.from(bucket).getPublicUrl(path).data.publicUrl;
+}
+
+async function addPoint() {
+  const nombre=document.getElementById('new-name').value.trim();
+  const etiquetas=document.getElementById('new-tag').value.trim();
+  const descripcion=document.getElementById('new-desc').value.trim();
+  const intensidad=parseInt(document.getElementById('new-int').value);
+  const fotoFile=document.getElementById('new-foto').files[0];
+  const audioFile=document.getElementById('new-audio').files[0];
+  if(!nombre){alert('Escribí el nombre del lugar.');return;}
+  if(!selectedType){alert('Elegí un tipo sensorial.');return;}
+  if(!etiquetas||!descripcion){alert('Completá etiquetas y descripción.');return;}
+  const latlng=pendingLatLng||{lat:CAFAYATE[0]+(Math.random()-.5)*0.01,lng:CAFAYATE[1]+(Math.random()-.5)*0.01};
+
+  const btn=document.getElementById('btn-add');
+  btn.disabled=true; btn.innerHTML='<span class="spinner"></span>Guardando...';
+
+  try {
+    let foto_url=null,audio_url=null;
+    if(fotoFile) foto_url=await uploadFile(fotoFile,'fotos');
+    if(audioFile) audio_url=await uploadFile(audioFile,'audios');
+    const {data,error}=await sb.from('registros').insert([{
+      nombre,tipo:selectedType,etiquetas,descripcion,intensidad,
+      latitud:latlng.lat,longitud:latlng.lng,foto_url,audio_url,
+    }]).select().single();
+    if(error)throw error;
+    points.push(data);
+    if(pendingMarker){map.removeLayer(pendingMarker);pendingMarker=null;}
+    pendingLatLng=null;
+    ['new-name','new-tag','new-desc','new-foto','new-audio'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('new-int').value=3;
+    document.getElementById('int-out').textContent='3';
+    document.getElementById('field-audio-wrap').style.display='none';
+    document.getElementById('loc-hint').textContent='📍 Hacé clic en el mapa para elegir la ubicación';
+    document.querySelectorAll('.type-chip').forEach(c=>c.classList.remove('sel','aroma','sonido','textura','forma','visual'));
+    selectedType=null;
+    renderMarkers(); selectPoint(data.id);
+    showToast('Registro guardado','success');
+  } catch(err) {
+    showToast('Error: '+err.message,'error');
+  } finally {
+    btn.disabled=false; btn.innerHTML='+ Agregar al mapa';
+  }
+}
+
+async function loadPoints() {
+  const {data,error}=await sb.from('registros').select('*').order('creado_en',{ascending:false});
+  if(error){showToast('Error al cargar: '+error.message,'error');return;}
+  points=data||[]; renderMarkers();
+}
+
+function exportCSV() {
+  const toExport=activeFilter==='todos'?points:points.filter(p=>p.tipo===activeFilter);
+  if(!toExport.length){alert('No hay registros para exportar.');return;}
+  const headers=['nombre','tipo','etiquetas','descripcion','intensidad','latitud','longitud','foto_url','audio_url','creado_en'];
+  const rows=toExport.map(p=>headers.map(h=>`"${String(p[h]??'').replace(/"/g,'""')}"`).join(','));
+  const csv=[headers.join(','),...rows].join('\n');
+  const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=`mapa_sensorial_cafayate_${activeFilter}.csv`; a.click();
+  URL.revokeObjectURL(url);
+  showToast(`${toExport.length} registros exportados`,'success');
+}
+
+function showToast(msg,type) {
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.className=`toast ${type} show`;
+  setTimeout(()=>t.classList.remove('show'),3500);
+}
+
+document.getElementById('tabs').addEventListener('click',e=>{
+  const tab=e.target.closest('.stab'); if(!tab)return;
+  activeFilter=tab.dataset.type;
+  document.querySelectorAll('.stab').forEach(t=>t.classList.remove('active','todos','aroma','sonido','textura','forma','visual'));
+  tab.classList.add('active',activeFilter);
+  selectedId=null; renderDetail(null); renderMarkers();
+});
+
+loadPoints();
+</script>
+</body>
+</html>
