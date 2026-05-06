@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mapa Sensorial — Cafayate</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; }
+    .app { display: flex; flex-direction: column; height: 100vh; }
+
+    .topbar {
+      background: #fff; border-bottom: 1px solid #e5e7eb;
+      padding: 8px 12px;
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      flex-wrap: wrap; z-index: 10;
+    }
+    .topbar h1 { font-size: 14px; font-weight: 600; color: #111827; }
+    .topbar-right { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+    .btn {
+      display: flex; align-items: center; gap: 4px;
+      padding: 5px 10px; border-radius: 99px;
+      border: 1px solid #e5e7eb; background: #f9fafb;
+      color: #374151; font-size: 11px; cursor: pointer;
+      font-family: inherit; transition: all .15s; white-space: nowrap;
+    }
+    .btn:hover { background: #fff; }
+    .btn.sat { background: #0f172a; color: #e2e8f0; border-color: #334155; }
+    .btn.gps-on { background: #E1F5EE; color: #085041; border-color: #1D9E75; }
+
+    .view-tabs { display: flex; gap: 4px; }
+    .vtab {
+      padding: 5px 12px; border-radius: 99px;
+      border: 1px solid #e5e7eb; background: #f9fafb;
+      cursor: pointer; font-size: 11px; color: #6b7280;
+      transition: all .15s; font-weight: 500;
+    }
+    .vtab.active { background: #111827; color: #fff; border-color: #111827; }
+
+    .sensor-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+    .stab {
+      padding: 3px 9px; border-radius: 99px;
+      border: 1px solid #e5e7eb; background: #f9fafb;
+      cursor: pointer; font-size: 11px; color: #6b7280; transition: all .15s;
+    }
+    .stab.active.todos    { background:#fff; color:#111827; border-color:#9ca3af; }
+    .stab.active.aroma    { background:#FAEEDA; color:#633806; border-color:#EF9F27; }
+    .stab.active.sonido   { background:#EEEDFE; color:#3C3489; border-color:#7F77DD; }
+    .stab.active.textura  { background:#E1F5EE; color:#085041; border-color:#1D9E75; }
+    .stab.active.forma    { background:#FAECE7; color:#4A1B0C; border-color:#D85A30; }
+    .stab.active.visual   { background:#E6F1FB; color:#0C447C; border-color:#378ADD; }
+
+    .offline-badge { display:none; align-items:center; gap:5px; padding:3px 9px; border-radius:99px; background:#FEF3C7; border:1px solid #F59E0B; color:#92400E; font-size:10px; font-weight:600; }
+    .offline-badge.show { display:flex; }
+
+    .sync-bar { display:none; padding:7px 14px; background:#FEF3C7; border-bottom:1px solid #F59E0B; font-size:11px; color:#92400E; align-items:center; justify-content:space-between; }
+    .sync-bar.show { display:flex; }
+    .sync-bar button { padding:3px 10px; border-radius:99px; border:1px solid #F59E0B; background:#fff; color:#92400E; font-size:11px; cursor:pointer; font-family:inherit; }
+
+    .main { display: flex; flex: 1; overflow: hidden; position: relative; }
+    #map { flex: 1; }
+
+    .panel {
+      width: 310px; min-width: 270px;
+      background: #fff; border-left: 1px solid #e5e7eb;
+      display: flex; flex-direction: column; overflow-y: auto; z-index: 5;
+    }
+    .panel-section { padding: 11px 13px; border-bottom: 1px solid #e5e7eb; }
+    .panel-section h2 { font-size: 10px; font-weight: 600; color: #9ca3af; margin-bottom: 8px; text-transform: uppercase; letter-spacing: .06em; }
+
+    .add-form input[type=text], .add-form textarea, .add-form select {
+      width: 100%; font-size: 12px; margin-bottom: 6px;
+      padding: 6px 9px; border-radius: 8px; border: 1px solid #e5e7eb;
+      background: #f9fafb; color: #111827; font-family: inherit;
+    }
+    .add-form textarea { resize: vertical; min-height: 40px; }
+    .add-form input[type=file] { width:100%; font-size:11px; margin-bottom:6px; padding:4px 9px; border-radius:8px; border:1px solid #e5e7eb; background:#f9fafb; color:#111827; font-family:inherit; }
+    .add-form button { width:100%; padding:8px; border-radius:8px; border:1px solid #e5e7eb; background:#f9fafb; color:#111827; font-size:12px; cursor:pointer; font-family:inherit; font-weight:500; }
+    .add-form button.primary { background:#111827; color:#fff; border-color:#111827; }
+    .add-form button.primary:hover { background:#1f2937; }
+    .add-form button:disabled { opacity:.5; cursor:not-allowed; }
+
+    .range-row { display:flex; align-items:center; gap:7px; margin-bottom:6px; }
+    .range-row label { font-size:11px; color:#6b7280; min-width:55px; }
+    .range-row input[type=range] { flex:1; }
+    .range-row span { font-size:11px; font-weight:600; min-width:14px; text-align:right; }
+
+    .type-grid { display:grid; grid-template-columns:1fr 1fr; gap:4px; margin-bottom:6px; }
+    .type-chip { padding:5px 8px; border-radius:8px; border:1px solid #e5e7eb; background:#f9fafb; cursor:pointer; font-size:11px; color:#6b7280; text-align:center; transition:all .15s; user-select:none; }
+    .type-chip.sel.aroma   { background:#FAEEDA; color:#633806; border-color:#EF9F27; }
+    .type-chip.sel.sonido  { background:#EEEDFE; color:#3C3489; border-color:#7F77DD; }
+    .type-chip.sel.textura { background:#E1F5EE; color:#085041; border-color:#1D9E75; }
+    .type-chip.sel.forma   { background:#FAECE7; color:#4A1B0C; border-color:#D85A30; }
+    .type-chip.sel.visual  { background:#E6F1FB; color:#0C447C; border-color:#378ADD; }
+
+    .perfil-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:4px; margin-bottom:6px; }
+    .perfil-chip { padding:5px 4px; border-radius:8px; border:1px solid #e5e7eb; background:#f9fafb; cursor:pointer; font-size:10px; color:#6b7280; text-align:center; transition:all .15s; user-select:none; line-height:1.3; }
+    .perfil-chip.sel { background:#111827; color:#fff; border-color:#111827; }
+
+    .momento-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:4px; margin-bottom:6px; }
+    .momento-chip { padding:5px 4px; border-radius:8px; border:1px solid #e5e7eb; background:#f9fafb; cursor:pointer; font-size:10px; color:#6b7280; text-align:center; transition:all .15s; user-select:none; line-height:1.4; }
+    .momento-chip.sel { background:#7F77DD; color:#fff; border-color:#534AB7; }
+
+    .two-col { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:6px; }
+    .two-col select { margin-bottom:0; }
+    .field-label { font-size:10px; color:#6b7280; display:block; margin-bottom:4px; font-weight:500; }
+
+    .gps-bar { display:flex; align-items:center; gap:6px; padding:5px 9px; border-radius:8px; margin-bottom:6px; font-size:11px; border:1px solid #e5e7eb; background:#f9fafb; }
+    .gps-dot { width:7px; height:7px; border-radius:50%; background:#d1d5db; flex-shrink:0; }
+    .gps-dot.active { background:#1D9E75; box-shadow:0 0 0 3px #bbf7d0; }
+    .gps-dot.searching { background:#F59E0B; animation:pulse 1s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.4} }
+
+    .clima-card { display:flex; align-items:center; gap:8px; padding:7px 10px; border-radius:8px; margin-bottom:6px; border:1px solid #e5e7eb; background:#f0f9ff; font-size:11px; color:#0c4a6e; }
+    .clima-card .clima-icon { font-size:18px; }
+    .clima-card .clima-info { flex:1; }
+    .clima-card .clima-temp { font-size:15px; font-weight:700; }
+    .clima-card .clima-desc { font-size:10px; color:#075985; }
+    .clima-card button { padding:3px 8px; border-radius:99px; border:1px solid #bae6fd; background:#fff; color:#0284c7; font-size:10px; cursor:pointer; font-family:inherit; }
+
+    .field-audio-wrap { display:none; margin-bottom:6px; }
+    .audio-box { background:#EEEDFE; border:1px solid #7F77DD; border-radius:8px; padding:7px 10px; }
+    .audio-box p { font-size:11px; color:#3C3489; margin-bottom:4px; font-weight:600; }
+
+    /* Heatmap legend */
+    .heatmap-legend { position:absolute; bottom:12px; left:12px; background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:8px 12px; z-index:10; font-size:11px; color:#374151; }
+    .heatmap-legend .hl-title { font-weight:600; margin-bottom:4px; font-size:10px; color:#6b7280; text-transform:uppercase; }
+    .hl-grad { height:8px; width:120px; border-radius:99px; background:linear-gradient(to right,#60a5fa,#34d399,#fbbf24,#f87171); margin-bottom:3px; }
+    .hl-labels { display:flex; justify-content:space-between; font-size:9px; color:#9ca3af; }
+
+    /* Stats */
+    .stat-card { background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px; padding:10px 12px; margin-bottom:8px; }
+    .stat-card .stat-title { font-size:10px; color:#9ca3af; text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px; }
+    .stat-card .stat-big { font-size:28px; font-weight:700; color:#111827; line-height:1; }
+    .stat-card .stat-sub { font-size:11px; color:#6b7280; margin-top:3px; }
+    .bar-chart { margin-top:4px; }
+    .bar-row { display:flex; align-items:center; gap:7px; margin-bottom:5px; }
+    .bar-row .bar-name { font-size:11px; color:#374151; min-width:80px; }
+    .bar-row .bar-outer { flex:1; height:8px; background:#f3f4f6; border-radius:99px; overflow:hidden; }
+    .bar-row .bar-inner { height:100%; border-radius:99px; transition:width .5s; }
+    .bar-row .bar-count { font-size:11px; color:#9ca3af; min-width:20px; text-align:right; }
+
+    /* Detail */
+    .point-detail { padding:13px; }
+    .point-detail h3 { font-size:14px; font-weight:600; color:#111827; margin-bottom:3px; }
+    .point-detail .sub { font-size:11px; color:#6b7280; margin-bottom:8px; }
+    .badge-row { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:8px; }
+    .badge { font-size:10px; padding:2px 7px; border-radius:99px; }
+    .badge.aroma   { background:#FAEEDA; color:#633806; }
+    .badge.sonido  { background:#EEEDFE; color:#3C3489; }
+    .badge.textura { background:#E1F5EE; color:#085041; }
+    .badge.forma   { background:#FAECE7; color:#4A1B0C; }
+    .badge.visual  { background:#E6F1FB; color:#0C447C; }
+    .desc-text { font-size:12px; color:#111827; line-height:1.6; margin-bottom:8px; }
+    .bar-track { height:5px; background:#f3f4f6; border-radius:99px; overflow:hidden; margin-top:3px; }
+    .bar-fill { height:100%; border-radius:99px; }
+    .bar-label { font-size:10px; color:#6b7280; }
+    .date-label { font-size:10px; color:#6b7280; margin-top:6px; }
+    .foto-preview { width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:8px; border:1px solid #e5e7eb; margin-bottom:8px; display:block; }
+    .audio-player { width:100%; margin-bottom:8px; background:#EEEDFE; border-radius:8px; padding:7px 10px; border:1px solid #7F77DD; }
+    .audio-player p { font-size:10px; color:#3C3489; margin-bottom:3px; font-weight:600; }
+    .audio-player audio { width:100%; height:30px; display:block; }
+    .meta-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px; margin-bottom:8px; }
+    .meta-item { background:#f9fafb; border:1px solid #e5e7eb; border-radius:7px; padding:5px 8px; }
+    .meta-item .meta-k { font-size:9px; color:#9ca3af; text-transform:uppercase; }
+    .meta-item .meta-v { font-size:11px; color:#111827; font-weight:500; margin-top:1px; }
+    .empty-state { padding:20px 14px; text-align:center; color:#6b7280; font-size:12px; line-height:1.6; }
+
+    /* FAB mobile */
+    .fab { display:none; position:absolute; bottom:20px; right:16px; width:52px; height:52px; border-radius:50%; background:#111827; color:#fff; border:none; font-size:24px; cursor:pointer; z-index:20; box-shadow:0 4px 12px rgba(0,0,0,.3); align-items:center; justify-content:center; }
+
+    /* Mobile bottom sheet */
+    .quick-sheet { display:none; position:absolute; bottom:0; left:0; right:0; background:#fff; border-top:1px solid #e5e7eb; border-radius:16px 16px 0 0; padding:16px; z-index:30; box-shadow:0 -4px 20px rgba(0,0,0,.1); max-height:90vh; overflow-y:auto; }
+    .quick-sheet.show { display:block; }
+    .sheet-handle { width:36px; height:4px; background:#e5e7eb; border-radius:99px; margin:0 auto 14px; }
+
+    .toast { position:absolute; bottom:20px; left:50%; transform:translateX(-50%); border-radius:99px; padding:7px 16px; font-size:11px; pointer-events:none; z-index:9999; white-space:nowrap; opacity:0; transition:opacity .3s; }
+    .toast.success { background:#E1F5EE; border:1px solid #1D9E75; color:#085041; }
+    .toast.error   { background:#FCEBEB; border:1px solid #E24B4A; color:#501313; }
+    .toast.info    { background:#E6F1FB; border:1px solid #378ADD; color:#0C447C; }
+    .toast.show { opacity:1; }
+
+    .spinner { display:inline-block; width:11px; height:11px; border:2px solid #e5e7eb; border-top-color:#6b7280; border-radius:50%; animation:spin .7s linear infinite; margin-right:4px; vertical-align:middle; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+
+    @media (max-width:640px) {
+      .panel { display:none; }
+      .fab { display:flex; }
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <h1>🗺 Mapa Sensorial — Cafayate</h1>
+      <div class="offline-badge" id="offline-badge">⚡ Sin conexión</div>
+    </div>
+    <div class="topbar-right">
+      <div class="view-tabs">
+        <div class="vtab active" id="vtab-mapa" onclick="setView('mapa')">🗺 Mapa</div>
+        <div class="vtab" id="vtab-calor" onclick="setView('calor')">🔥 Calor</div>
+        <div class="vtab" id="vtab-stats" onclick="setView('stats')">📊 Stats</div>
+      </div>
+      <div class="sensor-tabs" id="tabs">
+        <div class="stab active todos" data-type="todos">Todos</div>
+        <div class="stab" data-type="aroma">Aromas</div>
+        <div class="stab" data-type="sonido">Sonidos</div>
+        <div class="stab" data-type="textura">Texturas</div>
+        <div class="stab" data-type="forma">Formas</div>
+        <div class="stab" data-type="visual">Visuales</div>
+      </div>
+      <button class="btn" id="btn-gps" onclick="toggleGPS()">📍 GPS</button>
+      <button class="btn" id="btn-layer" onclick="toggleLayer()">🛰 Satélite</button>
+      <button class="btn" onclick="exportCSV()">⬇ CSV</button>
+    </div>
+  </div>
+
+  <div class="sync-bar" id="sync-bar">
+    <span id="sync-label">📦 Registros guardados sin conexión</span>
+    <button onclick="syncPending()">⬆ Sincronizar ahora</button>
+  </div>
+
+  <div class="main">
+    <div id="map"></div>
+
+    <div class="heatmap-legend" id="heatmap-legend" style="display:none;">
+      <div class="hl-title">Densidad sensorial</div>
+      <div class="hl-grad"></div>
+      <div class="hl-labels"><span>Baja</span><span>Alta</span></div>
+    </div>
+
+    <div class="panel" id="panel">
+      <!-- VISTA MAPA: formulario + detalle -->
+      <div id="view-mapa-panel">
+        <div class="panel-section">
+          <h2>Nuevo registro</h2>
+          <div class="add-form">
+            <div class="gps-bar">
+              <div class="gps-dot" id="gps-dot"></div>
+              <span id="gps-label">GPS inactivo — hacé clic en el mapa</span>
+            </div>
+            <input type="text" id="new-name" placeholder="Nombre del lugar" />
+            <label class="field-label">Tipo sensorial</label>
+            <div class="type-grid" id="type-grid">
+              <div class="type-chip" data-type="aroma">🌸 Aroma</div>
+              <div class="type-chip" data-type="sonido">🔊 Sonido</div>
+              <div class="type-chip" data-type="textura">🖐 Textura</div>
+              <div class="type-chip" data-type="forma">🔷 Forma</div>
+              <div class="type-chip" data-type="visual" style="grid-column:1/-1;">👁 Visual</div>
+            </div>
+            <input type="text" id="new-tag" placeholder="Etiquetas (ej: vino, viento)" />
+            <textarea id="new-desc" placeholder="Descripción sensorial..."></textarea>
+            <div class="range-row">
+              <label>Intensidad</label>
+              <input type="range" min="1" max="5" value="3" id="new-int" step="1" oninput="document.getElementById('int-out').textContent=this.value" />
+              <span id="int-out">3</span>
+            </div>
+            <label class="field-label">Perfil del observador</label>
+            <div class="perfil-grid" id="perfil-grid">
+              <div class="perfil-chip" data-val="turista">🧳 Turista</div>
+              <div class="perfil-chip" data-val="vecino">🏠 Vecino</div>
+              <div class="perfil-chip" data-val="investigador">🔬 Invest.</div>
+              <div class="perfil-chip" data-val="niño">🧒 Niño</div>
+              <div class="perfil-chip" data-val="artista">🎨 Artista</div>
+              <div class="perfil-chip" data-val="otro">👤 Otro</div>
+            </div>
+            <label class="field-label">Momento del día</label>
+            <div class="momento-grid" id="momento-grid">
+              <div class="momento-chip" data-val="amanecer">🌅 Amanecer</div>
+              <div class="momento-chip" data-val="mañana">☀️ Mañana</div>
+              <div class="momento-chip" data-val="mediodia">🌞 Mediodía</div>
+              <div class="momento-chip" data-val="tarde">🌇 Tarde</div>
+              <div class="momento-chip" data-val="atardecer">🌄 Atardecer</div>
+              <div class="momento-chip" data-val="noche">🌙 Noche</div>
+              <div class="momento-chip" data-val="madrugada">🌃 Madrugada</div>
+              <div class="momento-chip sel" data-val="auto">🕐 Ahora</div>
+            </div>
+            <div class="two-col">
+              <div>
+                <label class="field-label">Estación</label>
+                <select id="new-estacion">
+                  <option value="auto">Auto</option>
+                  <option value="verano">☀️ Verano</option>
+                  <option value="otoño">🍂 Otoño</option>
+                  <option value="invierno">❄️ Invierno</option>
+                  <option value="primavera">🌸 Primavera</option>
+                </select>
+              </div>
+              <div>
+                <label class="field-label">Tu nombre (opcional)</label>
+                <input type="text" id="new-observador" placeholder="Apodo o nombre" style="margin-bottom:0;" />
+              </div>
+            </div>
+            <label class="field-label">Condiciones climáticas</label>
+            <div class="clima-card">
+              <span class="clima-icon">🌡</span>
+              <div class="clima-info">
+                <div id="clima-temp" class="clima-temp">--°C</div>
+                <div id="clima-desc" class="clima-desc">Clic para obtener el clima</div>
+              </div>
+              <button onclick="fetchClima()">Obtener</button>
+            </div>
+            <div class="two-col" id="clima-manual" style="display:none;">
+              <div>
+                <label class="field-label">🌬 Viento</label>
+                <select id="new-viento" style="margin-bottom:0;">
+                  <option value="">Sin viento</option>
+                  <option value="brisa">Brisa</option>
+                  <option value="moderado">Moderado</option>
+                  <option value="fuerte">Fuerte</option>
+                  <option value="rafagas">Ráfagas</option>
+                </select>
+              </div>
+              <div>
+                <label class="field-label">💧 Humedad</label>
+                <select id="new-humedad" style="margin-bottom:0;">
+                  <option value="">No sé</option>
+                  <option value="muy_seca">Muy seca</option>
+                  <option value="seca">Seca</option>
+                  <option value="normal">Normal</option>
+                  <option value="humeda">Húmeda</option>
+                </select>
+              </div>
+            </div>
+            <div class="field-audio-wrap" id="field-audio-wrap">
+              <div class="audio-box">
+                <p>🎵 Audio (mp3, wav, m4a)</p>
+                <input type="file" id="new-audio" accept="audio/*" />
+              </div>
+            </div>
+            <label class="field-label">📸 Foto (opcional)</label>
+            <input type="file" id="new-foto" accept="image/*" />
+            <button id="btn-add" class="primary" onclick="addPoint()">+ Agregar al mapa</button>
+          </div>
+        </div>
+        <div id="detail-area" class="empty-state">Tocá un marcador para ver su detalle</div>
+      </div>
+
+      <!-- VISTA STATS -->
+      <div id="view-stats-panel" style="display:none;">
+        <div class="panel-section">
+          <h2>Análisis sensorial</h2>
+          <div id="stats-content"><div class="empty-state">Cargando...</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FAB mobile -->
+    <button class="fab" id="fab" onclick="openSheet()">+</button>
+
+    <!-- Bottom sheet mobile -->
+    <div class="quick-sheet" id="quick-sheet">
+      <div class="sheet-handle"></div>
+      <div class="gps-bar" style="margin-bottom:10px;">
+        <div class="gps-dot" id="gps-dot-m"></div>
+        <span id="gps-label-m">GPS inactivo</span>
+        <button onclick="getGPS()" style="margin-left:auto;padding:3px 10px;border-radius:99px;border:1px solid #e5e7eb;background:#f9fafb;font-size:11px;cursor:pointer;font-family:inherit;">Usar GPS</button>
+      </div>
+      <input type="text" id="m-name" placeholder="Nombre del lugar" style="width:100%;font-size:14px;padding:8px;border-radius:8px;border:1px solid #e5e7eb;background:#f9fafb;margin-bottom:8px;font-family:inherit;" />
+      <label class="field-label">Tipo sensorial</label>
+      <div class="type-grid" id="m-type-grid" style="margin-bottom:8px;">
+        <div class="type-chip" data-type="aroma">🌸 Aroma</div>
+        <div class="type-chip" data-type="sonido">🔊 Sonido</div>
+        <div class="type-chip" data-type="textura">🖐 Textura</div>
+        <div class="type-chip" data-type="forma">🔷 Forma</div>
+        <div class="type-chip" data-type="visual" style="grid-column:1/-1;">👁 Visual</div>
+      </div>
+      <label class="field-label">Perfil</label>
+      <div class="perfil-grid" id="m-perfil-grid" style="margin-bottom:8px;">
+        <div class="perfil-chip" data-val="turista">🧳 Turista</div>
+        <div class="perfil-chip" data-val="vecino">🏠 Vecino</div>
+        <div class="perfil-chip" data-val="investigador">🔬 Invest.</div>
+        <div class="perfil-chip" data-val="niño">🧒 Niño</div>
+        <div class="perfil-chip" data-val="artista">🎨 Artista</div>
+        <div class="perfil-chip" data-val="otro">👤 Otro</div>
+      </div>
+      <input type="text" id="m-tag" placeholder="Etiquetas (ej: vino, viento)" style="width:100%;font-size:13px;padding:7px 9px;border-radius:8px;border:1px solid #e5e7eb;background:#f9fafb;margin-bottom:7px;font-family:inherit;" />
+      <textarea id="m-desc" placeholder="Descripción sensorial..." style="width:100%;font-size:13px;padding:7px 9px;border-radius:8px;border:1px solid #e5e7eb;background:#f9fafb;margin-bottom:7px;font-family:inherit;resize:vertical;min-height:60px;"></textarea>
+      <div class="range-row" style="margin-bottom:10px;">
+        <label>Intensidad</label>
+        <input type="range" min="1" max="5" value="3" id="m-int" step="1" oninput="document.getElementById('m-int-out').textContent=this.value" />
+        <span id="m-int-out">3</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px;">
+        <div>
+          <label class="field-label">📸 Foto</label>
+          <input type="file" id="m-foto" accept="image/*" capture="environment" style="width:100%;font-size:11px;padding:4px;border-radius:8px;border:1px solid #e5e7eb;background:#f9fafb;" />
+        </div>
+        <div id="m-audio-wrap">
+          <label class="field-label">🎵 Audio</label>
+          <input type="file" id="m-audio" accept="audio/*" capture="microphone" style="width:100%;font-size:11px;padding:4px;border-radius:8px;border:1px solid #e5e7eb;background:#f9fafb;" />
+        </div>
+      </div>
+      <button id="m-btn-add" onclick="addPointMobile()" style="width:100%;padding:12px;border-radius:8px;border:none;background:#111827;color:#fff;font-size:14px;cursor:pointer;font-family:inherit;font-weight:600;">+ Guardar registro</button>
+      <button onclick="closeSheet()" style="width:100%;padding:8px;border-radius:8px;border:1px solid #e5e7eb;background:#f9fafb;color:#6b7280;font-size:12px;cursor:pointer;font-family:inherit;margin-top:6px;">Cancelar</button>
+    </div>
+
+    <div class="toast" id="toast"></div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL='https://brnzlbjctwgyjpgxpgjk.supabase.co';
+const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJybnpsYmpjdHdneWpwZ3hwZ2prIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwNDk3MzQsImV4cCI6MjA5MTYyNTczNH0.jF3DsZw4e_2JdQ3hZhKp_xnhCggga8d6EoUpBzUWsrM';
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+
+const CAFAYATE=[-26.0731,-65.9761];
+const TIPOS={
+  aroma:  {hex:'#EF9F27',dark:'#BA7517',label:'Aroma',  ejemplo:'vino, tierra, flores'},
+  sonido: {hex:'#7F77DD',dark:'#534AB7',label:'Sonido', ejemplo:'viento, campanas, pájaros'},
+  textura:{hex:'#1D9E75',dark:'#0F6E56',label:'Textura',ejemplo:'rugoso, suave, arenoso'},
+  forma:  {hex:'#D85A30',dark:'#993C1D',label:'Forma',  ejemplo:'angular, curvo, irregular'},
+  visual: {hex:'#378ADD',dark:'#185FA5',label:'Visual', ejemplo:'rojo, ocre, brillante'},
+};
+const ESTACIONES={1:'verano',2:'verano',3:'otoño',4:'otoño',5:'otoño',6:'invierno',7:'invierno',8:'invierno',9:'primavera',10:'primavera',11:'primavera',12:'verano'};
+const ESTACION_EMOJI={verano:'☀️',otoño:'🍂',invierno:'❄️',primavera:'🌸'};
+const MOMENTO_EMOJI={amanecer:'🌅',mañana:'☀️',mediodia:'🌞',tarde:'🌇',atardecer:'🌄',noche:'🌙',madrugada:'🌃'};
+const PERFIL_EMOJI={turista:'🧳',vecino:'🏠',investigador:'🔬',niño:'🧒',artista:'🎨',otro:'👤'};
+
+let points=[],activeFilter='todos',selectedType=null,mSelectedType=null;
+let selectedPerfil=null,mSelectedPerfil=null,selectedMomento='auto';
+let pendingLatLng=null,markers={},heatCircles=[],selectedId=null;
+let isSatellite=false,gpsActive=false,currentGPS=null,gpsMarker=null;
+let climaData=null,currentView='mapa';
+let isOnline=navigator.onLine;
+let pendingOffline=[];
+try{pendingOffline=JSON.parse(localStorage.getItem('pending_offline')||'[]');}catch(e){}
+
+// ── MAP ──
+const map=L.map('map').setView(CAFAYATE,15);
+const layerStreet=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© <a href="https://www.openstreetmap.org/">OpenStreetMap</a>',maxZoom:19});
+const layerSat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'© Esri',maxZoom:19});
+const layerSatLabels=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,opacity:.8});
+layerStreet.addTo(map);
+
+function toggleLayer(){
+  const btn=document.getElementById('btn-layer');
+  if(!isSatellite){map.removeLayer(layerStreet);layerSat.addTo(map);layerSatLabels.addTo(map);btn.textContent='🗺 Mapa';btn.classList.add('sat');isSatellite=true;}
+  else{map.removeLayer(layerSat);map.removeLayer(layerSatLabels);layerStreet.addTo(map);btn.textContent='🛰 Satélite';btn.classList.remove('sat');isSatellite=false;}
+}
+
+// ── ONLINE/OFFLINE ──
+function updateOnlineStatus(){
+  isOnline=navigator.onLine;
+  document.getElementById('offline-badge').classList.toggle('show',!isOnline);
+  if(isOnline&&pendingOffline.length>0)updateSyncBar();
+}
+window.addEventListener('online',()=>{isOnline=true;updateOnlineStatus();showToast('Conexión recuperada','success');setTimeout(syncPending,1500);});
+window.addEventListener('offline',()=>{isOnline=false;updateOnlineStatus();showToast('Sin conexión — los registros se guardarán localmente','info');});
+updateOnlineStatus();
+
+function savePending(){localStorage.setItem('pending_offline',JSON.stringify(pendingOffline));updateSyncBar();}
+function updateSyncBar(){
+  const bar=document.getElementById('sync-bar');
+  if(pendingOffline.length>0&&isOnline){bar.classList.add('show');document.getElementById('sync-label').textContent=`📦 ${pendingOffline.length} registro(s) sin sincronizar`;}
+  else bar.classList.remove('show');
+}
+
+async function syncPending(){
+  if(!isOnline||!pendingOffline.length)return;
+  showToast('Sincronizando...','info');
+  let synced=0;
+  for(const rec of[...pendingOffline]){
+    const{foto_data,audio_data,foto_ext,audio_ext,...row}=rec;
+    try{
+      if(foto_data)row.foto_url=await uploadBase64(foto_data,'fotos',foto_ext);
+      if(audio_data)row.audio_url=await uploadBase64(audio_data,'audios',audio_ext);
+      const{data,error}=await sb.from('registros').insert([row]).select().single();
+      if(!error){points.push(data);synced++;pendingOffline=pendingOffline.filter(p=>p!==rec);}
+    }catch(e){}
+  }
+  savePending();renderMarkers();showToast(`${synced} registro(s) sincronizado(s)`,'success');
+}
+
+async function uploadBase64(b64,bucket,ext){
+  const blob=await(await fetch(b64)).blob();
+  const path=`${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+  const{error}=await sb.storage.from(bucket).upload(path,blob,{upsert:true});
+  if(error)throw error;
+  return sb.storage.from(bucket).getPublicUrl(path).data.publicUrl;
+}
+
+// ── VIEWS ──
+function setView(v){
+  currentView=v;
+  ['mapa','calor','stats'].forEach(id=>document.getElementById('vtab-'+id).classList.toggle('active',id===v));
+  document.getElementById('view-mapa-panel').style.display=v==='mapa'?'block':'none';
+  document.getElementById('view-stats-panel').style.display=v==='stats'?'block':'none';
+  document.getElementById('heatmap-legend').style.display=v==='calor'?'block':'none';
+  clearHeat();
+  if(v==='mapa')renderMarkers();
+  else if(v==='calor'){clearMarkers();renderHeatmap();}
+  else if(v==='stats'){clearMarkers();clearHeat();renderStats();}
+}
+
+// ── GPS ──
+function toggleGPS(){gpsActive?stopGPS():getGPS();}
+function getGPS(){
+  if(!navigator.geolocation){showToast('GPS no disponible','error');return;}
+  setGPSState('searching','Buscando ubicación...');
+  navigator.geolocation.getCurrentPosition(
+    pos=>{
+      currentGPS={lat:pos.coords.latitude,lng:pos.coords.longitude,acc:pos.coords.accuracy};
+      setGPSState('active',`GPS · ±${Math.round(currentGPS.acc)}m`);
+      pendingLatLng=currentGPS;
+      if(!gpsMarker)gpsMarker=L.circleMarker([currentGPS.lat,currentGPS.lng],{radius:8,color:'#1D9E75',weight:2,fillColor:'#1D9E75',fillOpacity:.5}).addTo(map);
+      else gpsMarker.setLatLng([currentGPS.lat,currentGPS.lng]);
+      map.setView([currentGPS.lat,currentGPS.lng],17);
+      document.getElementById('btn-gps').classList.add('gps-on');
+      document.getElementById('btn-gps').textContent='📍 GPS activo';
+      gpsActive=true;
+      fetchClima();
+    },
+    ()=>{setGPSState('','GPS — error');showToast('No se pudo obtener GPS','error');},
+    {enableHighAccuracy:true,timeout:10000}
+  );
+}
+function stopGPS(){
+  gpsActive=false;
+  if(gpsMarker){map.removeLayer(gpsMarker);gpsMarker=null;}
+  currentGPS=null;
+  setGPSState('','GPS inactivo — hacé clic en el mapa');
+  document.getElementById('btn-gps').classList.remove('gps-on');
+  document.getElementById('btn-gps').textContent='📍 GPS';
+}
+function setGPSState(state,label){
+  ['gps-dot','gps-dot-m'].forEach(id=>{const el=document.getElementById(id);if(!el)return;el.className='gps-dot';if(state)el.classList.add(state);});
+  ['gps-label','gps-label-m'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=label;});
+}
+
+// ── CLIMA ──
+async function fetchClima(){
+  const latlng=currentGPS||{lat:CAFAYATE[0],lng:CAFAYATE[1]};
+  try{
+    const res=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latlng.lat}&longitude=${latlng.lng}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&wind_speed_unit=kmh`);
+    const d=await res.json();const c=d.current;
+    const wc=c.weather_code;
+    const desc=wc<=1?'☀️ Despejado':wc<=3?'⛅ Parcialmente nublado':wc<=48?'🌫 Niebla':wc<=67?'🌧 Lluvia':wc<=77?'🌨 Nieve':wc<=82?'🌦 Lluvias':wc<=99?'⛈ Tormenta':'🌡 Variable';
+    climaData={temp:c.temperature_2m,hum:c.relative_humidity_2m,viento:Math.round(c.wind_speed_10m),desc};
+    document.getElementById('clima-temp').textContent=`${climaData.temp}°C`;
+    document.getElementById('clima-desc').textContent=`${desc} · 💧${climaData.hum}% · 🌬${climaData.viento}km/h`;
+    document.getElementById('clima-manual').style.display='none';
+    showToast('Clima actualizado','success');
+  }catch(e){
+    document.getElementById('clima-desc').textContent='No se pudo obtener el clima';
+    document.getElementById('clima-manual').style.display='grid';
+  }
+}
+
+// ── MAP CLICK ──
+let pendingMarker=null;
+map.on('click',e=>{
+  pendingLatLng=e.latlng;
+  if(pendingMarker)map.removeLayer(pendingMarker);
+  pendingMarker=L.circleMarker([e.latlng.lat,e.latlng.lng],{radius:10,color:'#fff',weight:2,fill:true,fillColor:'#534AB7',fillOpacity:.4,dashArray:'5 3'}).addTo(map);
+  setGPSState(gpsActive?'active':'','Ubicación: '+e.latlng.lat.toFixed(4)+', '+e.latlng.lng.toFixed(4));
+});
+
+// ── CHIPS ──
+document.getElementById('type-grid').addEventListener('click',e=>{
+  const chip=e.target.closest('.type-chip');if(!chip)return;
+  selectedType=chip.dataset.type;
+  document.querySelectorAll('#type-grid .type-chip').forEach(c=>c.classList.remove('sel','aroma','sonido','textura','forma','visual'));
+  chip.classList.add('sel',selectedType);
+  document.getElementById('new-tag').placeholder=`Etiquetas (ej: ${TIPOS[selectedType].ejemplo})`;
+  document.getElementById('field-audio-wrap').style.display=selectedType==='sonido'?'block':'none';
+});
+document.getElementById('m-type-grid').addEventListener('click',e=>{
+  const chip=e.target.closest('.type-chip');if(!chip)return;
+  mSelectedType=chip.dataset.type;
+  document.querySelectorAll('#m-type-grid .type-chip').forEach(c=>c.classList.remove('sel','aroma','sonido','textura','forma','visual'));
+  chip.classList.add('sel',mSelectedType);
+  document.getElementById('m-audio-wrap').style.display=mSelectedType==='sonido'?'block':'none';
+});
+document.getElementById('perfil-grid').addEventListener('click',e=>{
+  const chip=e.target.closest('.perfil-chip');if(!chip)return;
+  selectedPerfil=chip.dataset.val;
+  document.querySelectorAll('#perfil-grid .perfil-chip').forEach(c=>c.classList.remove('sel'));
+  chip.classList.add('sel');
+});
+document.getElementById('m-perfil-grid').addEventListener('click',e=>{
+  const chip=e.target.closest('.perfil-chip');if(!chip)return;
+  mSelectedPerfil=chip.dataset.val;
+  document.querySelectorAll('#m-perfil-grid .perfil-chip').forEach(c=>c.classList.remove('sel'));
+  chip.classList.add('sel');
+});
+document.getElementById('momento-grid').addEventListener('click',e=>{
+  const chip=e.target.closest('.momento-chip');if(!chip)return;
+  selectedMomento=chip.dataset.val;
+  document.querySelectorAll('.momento-chip').forEach(c=>c.classList.remove('sel'));
+  chip.classList.add('sel');
+});
+
+// ── MARKERS ──
+function makeIcon(tipo,sel){
+  const c=TIPOS[tipo]||TIPOS.visual;const size=sel?28:22;
+  const ring=sel?`<circle cx="14" cy="14" r="13" fill="none" stroke="white" stroke-width="2.5"/>`:'';
+  return L.divIcon({html:`<svg xmlns="http://www.w3.org/2000/svg" width="${size*2}" height="${size*2}" viewBox="0 0 28 28"><circle cx="14" cy="14" r="11" fill="${c.hex}" stroke="${c.dark}" stroke-width="1.5"/>${ring}<circle cx="14" cy="14" r="4" fill="white" opacity="0.85"/></svg>`,className:'',iconSize:[size*2,size*2],iconAnchor:[size,size]});
+}
+function clearMarkers(){Object.values(markers).forEach(m=>map.removeLayer(m));markers={};}
+function clearHeat(){heatCircles.forEach(c=>map.removeLayer(c));heatCircles=[];}
+function getFiltered(){return activeFilter==='todos'?points:points.filter(p=>p.tipo===activeFilter);}
+
+function renderMarkers(){
+  clearMarkers();
+  getFiltered().forEach(p=>{
+    const m=L.marker([p.latitud,p.longitud],{icon:makeIcon(p.tipo,p.id===selectedId)}).addTo(map);
+    m.on('click',()=>selectPoint(p.id));markers[p.id]=m;
+  });
+}
+
+function renderHeatmap(){
+  clearHeat();
+  const filtered=getFiltered();
+  if(!filtered.length){showToast('No hay registros para mostrar','info');return;}
+  const grid={};
+  filtered.forEach(p=>{
+    const gx=Math.round(p.latitud/0.002)*0.002;const gy=Math.round(p.longitud/0.002)*0.002;
+    const key=`${gx},${gy}`;
+    if(!grid[key])grid[key]={lat:gx,lng:gy,count:0,tipos:{}};
+    grid[key].count++;grid[key].tipos[p.tipo]=(grid[key].tipos[p.tipo]||0)+1;
+  });
+  const maxCount=Math.max(...Object.values(grid).map(g=>g.count));
+  Object.values(grid).forEach(g=>{
+    const intensity=g.count/maxCount;
+    let r,gr,b;
+    if(intensity<0.33){r=96;gr=165;b=250;}
+    else if(intensity<0.66){r=52;gr=211;b=153;}
+    else if(intensity<0.85){r=251;gr=191;b=36;}
+    else{r=248;gr=113;b=113;}
+    const c=L.circleMarker([g.lat,g.lng],{radius:30+intensity*60,color:'none',fillColor:`rgb(${r},${gr},${b})`,fillOpacity:0.35+intensity*0.3}).addTo(map);
+    const tipoMas=Object.entries(g.tipos).sort((a,b)=>b[1]-a[1])[0];
+    c.bindTooltip(`${g.count} registro${g.count!==1?'s':''} · ${TIPOS[tipoMas[0]]?.label||tipoMas[0]}`,{sticky:true});
+    heatCircles.push(c);
+  });
+}
+
+function renderStats(){
+  const filtered=getFiltered();const total=filtered.length;
+  const container=document.getElementById('stats-content');
+  if(!total){container.innerHTML='<div class="empty-state">No hay registros para analizar</div>';return;}
+  const porTipo={};Object.keys(TIPOS).forEach(t=>porTipo[t]=0);
+  filtered.forEach(p=>{if(porTipo[p.tipo]!==undefined)porTipo[p.tipo]++;});
+  const maxTipo=Math.max(...Object.values(porTipo));
+  const porPerfil={};filtered.forEach(p=>{const k=p.perfil||'sin dato';porPerfil[k]=(porPerfil[k]||0)+1;});
+  const momentos=['amanecer','mañana','mediodia','tarde','atardecer','noche','madrugada'];
+  const porMomento={};momentos.forEach(m=>porMomento[m]=0);
+  filtered.forEach(p=>{if(p.momento&&porMomento[p.momento]!==undefined)porMomento[p.momento]++;});
+  const maxMomento=Math.max(...Object.values(porMomento),1);
+  const porEstacion={verano:0,otoño:0,invierno:0,primavera:0};
+  filtered.forEach(p=>{if(p.estacion&&porEstacion[p.estacion]!==undefined)porEstacion[p.estacion]++;});
+  const promedioInt=(filtered.reduce((s,p)=>s+(p.intensidad||3),0)/total).toFixed(1);
+  const conTemp=filtered.filter(p=>p.temperatura);
+  const promedioTemp=conTemp.length?(conTemp.reduce((s,p)=>s+p.temperatura,0)/conTemp.length).toFixed(1):null;
+  const fechas=filtered.map(p=>new Date(p.creado_en)).filter(d=>!isNaN(d)).sort((a,b)=>a-b);
+  const primerRegistro=fechas.length?fechas[0].toLocaleDateString('es-AR'):'—';
+  const ultimoRegistro=fechas.length?fechas[fechas.length-1].toLocaleDateString('es-AR'):'—';
+
+  container.innerHTML=`<div style="padding:12px 14px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+      <div class="stat-card"><div class="stat-title">Total registros</div><div class="stat-big">${total}</div><div class="stat-sub">${primerRegistro} → ${ultimoRegistro}</div></div>
+      <div class="stat-card"><div class="stat-title">Intensidad prom.</div><div class="stat-big">${promedioInt}</div><div class="stat-sub">sobre 5 puntos</div></div>
+      ${promedioTemp?`<div class="stat-card" style="grid-column:1/-1;"><div class="stat-title">🌡 Temperatura prom.</div><div class="stat-big">${promedioTemp}°C</div><div class="stat-sub">${conTemp.length} registros con clima</div></div>`:''}
+    </div>
+    <div class="stat-card" style="margin-bottom:12px;">
+      <div class="stat-title">Por tipo sensorial</div>
+      <div class="bar-chart">${Object.entries(porTipo).map(([tipo,n])=>`<div class="bar-row"><span class="bar-name">${TIPOS[tipo]?.label||tipo}</span><div class="bar-outer"><div class="bar-inner" style="width:${maxTipo?n/maxTipo*100:0}%;background:${TIPOS[tipo]?.hex||'#ccc'}"></div></div><span class="bar-count">${n}</span></div>`).join('')}</div>
+    </div>
+    <div class="stat-card" style="margin-bottom:12px;">
+      <div class="stat-title">Por momento del día</div>
+      <div style="display:flex;gap:3px;margin-top:4px;">${momentos.map(m=>{const n=porMomento[m];const h=maxMomento?Math.round(n/maxMomento*40):0;return`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;"><div style="font-size:8px;color:#9ca3af;">${MOMENTO_EMOJI[m]||''}</div><div style="width:100%;height:${h+4}px;background:${n>0?'#7F77DD':'#f3f4f6'};border-radius:3px 3px 0 0;opacity:${0.3+n/maxMomento*0.7};min-height:4px;"></div><div style="font-size:8px;color:#9ca3af;">${n}</div></div>`;}).join('')}</div>
+      <div style="display:flex;gap:3px;margin-top:2px;">${momentos.map(m=>`<div style="flex:1;font-size:7px;color:#d1d5db;text-align:center;overflow:hidden;">${m.substring(0,3)}</div>`).join('')}</div>
+    </div>
+    <div class="stat-card" style="margin-bottom:12px;">
+      <div class="stat-title">Por estación</div>
+      <div style="display:flex;gap:6px;margin-top:6px;">${Object.entries(porEstacion).map(([est,n])=>`<div style="flex:1;text-align:center;"><div style="font-size:16px;">${ESTACION_EMOJI[est]||''}</div><div style="font-size:11px;font-weight:600;color:#111827;">${n}</div><div style="font-size:9px;color:#9ca3af;">${est}</div></div>`).join('')}</div>
+    </div>
+    <div class="stat-card" style="margin-bottom:12px;">
+      <div class="stat-title">Por perfil de observador</div>
+      <div class="bar-chart" style="margin-top:4px;">${Object.entries(porPerfil).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([perfil,n])=>`<div class="bar-row"><span class="bar-name">${PERFIL_EMOJI[perfil]||'👤'} ${perfil}</span><div class="bar-outer"><div class="bar-inner" style="width:${n/total*100}%;background:#6b7280"></div></div><span class="bar-count">${n}</span></div>`).join('')}</div>
+    </div>
+  </div>`;
+}
+
+function selectPoint(id){
+  selectedId=id;const p=points.find(x=>x.id===id);if(!p)return;
+  renderMarkers();renderDetail(p);map.panTo([p.latitud,p.longitud]);
+}
+
+function renderDetail(p){
+  const area=document.getElementById('detail-area');
+  if(!p){area.innerHTML='<div class="empty-state">Tocá un marcador para ver su detalle</div>';return;}
+  const c=TIPOS[p.tipo]||TIPOS.visual;
+  const tags=(p.etiquetas||'').split(',').map(t=>t.trim()).filter(Boolean);
+  const pct=((p.intensidad||1)/5)*100;
+  const fecha=p.creado_en?new Date(p.creado_en).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+  const fotoHtml=p.foto_url?`<img class="foto-preview" src="${p.foto_url}" alt="foto"/>`:'';
+  const audioHtml=(p.tipo==='sonido'&&p.audio_url)?`<div class="audio-player"><p>🎵 Escuchar</p><audio controls src="${p.audio_url}"></audio></div>`:'';
+  const metaItems=[
+    p.perfil?{k:'Observador',v:`${PERFIL_EMOJI[p.perfil]||'👤'} ${p.perfil}`}:null,
+    p.momento&&p.momento!=='auto'?{k:'Momento',v:`${MOMENTO_EMOJI[p.momento]||''} ${p.momento}`}:null,
+    p.estacion?{k:'Estación',v:`${ESTACION_EMOJI[p.estacion]||''} ${p.estacion}`}:null,
+    p.temperatura?{k:'Temperatura',v:`🌡 ${p.temperatura}°C`}:null,
+    p.humedad_pct?{k:'Humedad',v:`💧 ${p.humedad_pct}%`}:null,
+    p.viento_kmh?{k:'Viento',v:`🌬 ${p.viento_kmh}km/h`}:null,
+    p.condicion_clima?{k:'Clima',v:p.condicion_clima}:null,
+    p.observador_nombre?{k:'Nombre',v:p.observador_nombre}:null,
+  ].filter(Boolean);
+  const metaHtml=metaItems.length?`<div class="meta-grid">${metaItems.map(m=>`<div class="meta-item"><div class="meta-k">${m.k}</div><div class="meta-v">${m.v}</div></div>`).join('')}</div>`:'';
+  area.innerHTML=`<div class="point-detail">${fotoHtml}${audioHtml}<h3>${p.nombre}</h3><div class="sub">${c.label} · ${Number(p.latitud).toFixed(4)}, ${Number(p.longitud).toFixed(4)}</div><div class="badge-row">${tags.map(t=>`<span class="badge ${p.tipo}">${t}</span>`).join('')}</div><p class="desc-text">${p.descripcion||''}</p><div class="bar-label">Intensidad ${p.intensidad}/5</div><div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${c.hex}"></div></div>${metaHtml}${fecha?`<div class="date-label">Registrado el ${fecha}</div>`:''}<button onclick="removePoint('${p.id}')" style="margin-top:10px;width:100%;padding:6px;border-radius:8px;border:1px solid #e5e7eb;background:#f9fafb;color:#6b7280;font-size:11px;cursor:pointer;font-family:inherit;">Eliminar punto</button></div>`;
+}
+
+async function removePoint(id){
+  const{error}=await sb.from('registros').delete().eq('id',id);
+  if(error){showToast('Error','error');return;}
+  if(markers[id])map.removeLayer(markers[id]);delete markers[id];
+  points=points.filter(p=>p.id!==id);selectedId=null;
+  renderDetail(null);renderMarkers();showToast('Punto eliminado','success');
+}
+
+async function uploadFile(file,bucket){
+  const ext=file.name.split('.').pop();const path=`${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+  const{error}=await sb.storage.from(bucket).upload(path,file,{upsert:true});if(error)throw error;
+  return sb.storage.from(bucket).getPublicUrl(path).data.publicUrl;
+}
+function fileToBase64(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(file);});}
+
+function getMomentoAuto(){const h=new Date().getHours();if(h>=5&&h<7)return'amanecer';if(h>=7&&h<12)return'mañana';if(h>=12&&h<14)return'mediodia';if(h>=14&&h<18)return'tarde';if(h>=18&&h<20)return'atardecer';if(h>=20||h<1)return'noche';return'madrugada';}
+function getEstacionAuto(){return ESTACIONES[new Date().getMonth()+1];}
+
+async function addPoint(){
+  const nombre=document.getElementById('new-name').value.trim();
+  const etiquetas=document.getElementById('new-tag').value.trim();
+  const descripcion=document.getElementById('new-desc').value.trim();
+  const intensidad=parseInt(document.getElementById('new-int').value);
+  const fotoFile=document.getElementById('new-foto').files[0];
+  const audioFile=document.getElementById('new-audio').files[0];
+  const observador_nombre=document.getElementById('new-observador').value.trim();
+  let estacion=document.getElementById('new-estacion').value;if(estacion==='auto')estacion=getEstacionAuto();
+  const momento=selectedMomento==='auto'?getMomentoAuto():selectedMomento;
+  if(!nombre){alert('Escribí el nombre.');return;}if(!selectedType){alert('Elegí un tipo sensorial.');return;}if(!etiquetas||!descripcion){alert('Completá etiquetas y descripción.');return;}
+  const latlng=pendingLatLng||currentGPS||{lat:CAFAYATE[0]+(Math.random()-.5)*0.01,lng:CAFAYATE[1]+(Math.random()-.5)*0.01};
+  const btn=document.getElementById('btn-add');btn.disabled=true;btn.innerHTML='<span class="spinner"></span>Guardando...';
+  const record={nombre,tipo:selectedType,etiquetas,descripcion,intensidad,latitud:latlng.lat,longitud:latlng.lng,perfil:selectedPerfil||null,momento,estacion,observador_nombre:observador_nombre||null,temperatura:climaData?.temp||null,humedad_pct:climaData?.hum||null,viento_kmh:climaData?.viento||null,condicion_clima:climaData?.desc||null,viento_manual:!climaData?document.getElementById('new-viento').value||null:null,humedad_manual:!climaData?document.getElementById('new-humedad').value||null:null,foto_url:null,audio_url:null};
+  try{
+    if(!isOnline){
+      if(fotoFile){record.foto_data=await fileToBase64(fotoFile);record.foto_ext=fotoFile.name.split('.').pop();}
+      if(audioFile){record.audio_data=await fileToBase64(audioFile);record.audio_ext=audioFile.name.split('.').pop();}
+      pendingOffline.push(record);savePending();renderMarkers();showToast('Guardado sin conexión','info');
+    }else{
+      if(fotoFile)record.foto_url=await uploadFile(fotoFile,'fotos');
+      if(audioFile)record.audio_url=await uploadFile(audioFile,'audios');
+      const{data,error}=await sb.from('registros').insert([record]).select().single();if(error)throw error;
+      points.push(data);renderMarkers();selectPoint(data.id);showToast('Registro guardado','success');
+    }
+    if(pendingMarker){map.removeLayer(pendingMarker);pendingMarker=null;}pendingLatLng=null;
+    ['new-name','new-tag','new-desc','new-foto','new-audio','new-observador'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('new-int').value=3;document.getElementById('int-out').textContent='3';document.getElementById('new-estacion').value='auto';document.getElementById('field-audio-wrap').style.display='none';document.getElementById('clima-temp').textContent='--°C';document.getElementById('clima-desc').textContent='Clic para obtener el clima';
+    document.querySelectorAll('#type-grid .type-chip,.perfil-chip,.momento-chip').forEach(c=>c.classList.remove('sel','aroma','sonido','textura','forma','visual'));
+    document.querySelector('.momento-chip[data-val="auto"]').classList.add('sel');
+    selectedType=null;selectedPerfil=null;selectedMomento='auto';climaData=null;
+  }catch(err){showToast('Error: '+err.message,'error');}
+  finally{btn.disabled=false;btn.innerHTML='+ Agregar al mapa';}
+}
+
+async function addPointMobile(){
+  const nombre=document.getElementById('m-name').value.trim();
+  const etiquetas=document.getElementById('m-tag').value.trim();
+  const descripcion=document.getElementById('m-desc').value.trim();
+  const intensidad=parseInt(document.getElementById('m-int').value);
+  const fotoFile=document.getElementById('m-foto').files[0];
+  const audioFile=document.getElementById('m-audio').files[0];
+  if(!nombre){alert('Escribí el nombre.');return;}if(!mSelectedType){alert('Elegí un tipo.');return;}if(!etiquetas||!descripcion){alert('Completá etiquetas y descripción.');return;}
+  const latlng=pendingLatLng||currentGPS||{lat:CAFAYATE[0]+(Math.random()-.5)*0.01,lng:CAFAYATE[1]+(Math.random()-.5)*0.01};
+  const btn=document.getElementById('m-btn-add');btn.disabled=true;btn.textContent='Guardando...';
+  const record={nombre,tipo:mSelectedType,etiquetas,descripcion,intensidad,latitud:latlng.lat,longitud:latlng.lng,perfil:mSelectedPerfil||null,momento:getMomentoAuto(),estacion:getEstacionAuto(),foto_url:null,audio_url:null};
+  try{
+    if(!isOnline){
+      if(fotoFile){record.foto_data=await fileToBase64(fotoFile);record.foto_ext=fotoFile.name.split('.').pop();}
+      if(audioFile){record.audio_data=await fileToBase64(audioFile);record.audio_ext=audioFile.name.split('.').pop();}
+      pendingOffline.push(record);savePending();renderMarkers();showToast('Guardado sin conexión','info');
+    }else{
+      if(fotoFile)record.foto_url=await uploadFile(fotoFile,'fotos');
+      if(audioFile)record.audio_url=await uploadFile(audioFile,'audios');
+      const{data,error}=await sb.from('registros').insert([record]).select().single();if(error)throw error;
+      points.push(data);renderMarkers();showToast('Registro guardado','success');
+    }
+    closeSheet();
+  }catch(err){showToast('Error: '+err.message,'error');}
+  finally{btn.disabled=false;btn.textContent='+ Guardar registro';}
+}
+
+function openSheet(){document.getElementById('quick-sheet').classList.add('show');}
+function closeSheet(){
+  document.getElementById('quick-sheet').classList.remove('show');
+  ['m-name','m-tag','m-desc','m-foto','m-audio'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('m-int').value=3;document.getElementById('m-int-out').textContent='3';
+  document.querySelectorAll('#m-type-grid .type-chip,#m-perfil-grid .perfil-chip').forEach(c=>c.classList.remove('sel','aroma','sonido','textura','forma','visual'));
+  mSelectedType=null;mSelectedPerfil=null;
+}
+
+async function loadPoints(){
+  const{data,error}=await sb.from('registros').select('*').order('creado_en',{ascending:false});
+  if(error){showToast('Error al cargar','error');return;}
+  points=data||[];setView('mapa');updateSyncBar();
+}
+
+function exportCSV(){
+  const toExport=getFiltered();if(!toExport.length){alert('No hay registros.');return;}
+  const headers=['nombre','tipo','etiquetas','descripcion','intensidad','latitud','longitud','perfil','momento','estacion','observador_nombre','temperatura','humedad_pct','viento_kmh','condicion_clima','viento_manual','humedad_manual','foto_url','audio_url','creado_en'];
+  const rows=toExport.map(p=>headers.map(h=>`"${String(p[h]??'').replace(/"/g,'""')}"`).join(','));
+  const csv=[headers.join(','),...rows].join('\n');
+  const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='mapa_sensorial_cafayate.csv';a.click();URL.revokeObjectURL(url);
+  showToast(`${toExport.length} registros exportados`,'success');
+}
+
+function showToast(msg,type){
+  const t=document.getElementById('toast');t.textContent=msg;t.className=`toast ${type} show`;
+  setTimeout(()=>t.classList.remove('show'),3500);
+}
+
+document.getElementById('tabs').addEventListener('click',e=>{
+  const tab=e.target.closest('.stab');if(!tab)return;
+  activeFilter=tab.dataset.type;
+  document.querySelectorAll('.stab').forEach(t=>t.classList.remove('active','todos','aroma','sonido','textura','forma','visual'));
+  tab.classList.add('active',activeFilter);
+  selectedId=null;renderDetail(null);setView(currentView);
+});
+
+loadPoints();
+</script>
+</body>
+</html>
